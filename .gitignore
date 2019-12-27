@@ -1,0 +1,5 @@
+data/
+input/
+logs/
+submission/
+*.ipynb
