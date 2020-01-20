@@ -7,8 +7,8 @@ import lightgbm
 
 from util import read_all, save_df_with_dtypes
 
-format = '%(asctime)s %(message)s'
-logging.basicConfig(filename='../logs/03_featuretools.log', level=logging.INFO, format=format)
+formatter = '%(asctime)s %(message)s'
+logging.basicConfig(filename='../logs/03_featuretools.log', level=logging.INFO, format=formatter)
 
 datas = read_all()
 app_train = datas['application_train']

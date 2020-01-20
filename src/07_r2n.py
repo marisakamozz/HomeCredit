@@ -6,54 +6,55 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from sklearn.model_selection import StratifiedKFold
 
-from util import seed_everything, read_file_with_dtypes, get_dims, fillna_app, HomeCreditDataset
+from util import seed_everything, read_all, get_dims, read_sequences, fillna_all, HomeCreditDataset
 from plutil import LightningModel, LightningModelNoVal
-from model import MLP
+from model import R2N
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='MLP')
+    parser = argparse.ArgumentParser(description='LSTM')
     parser.add_argument('--lr', action='store', type=float, default=1e-3)
-    parser.add_argument('--n_hidden', action='store', type=int, default=256)
+    parser.add_argument('--n_hidden', action='store', type=int, default=16)
+    parser.add_argument('--n_main', action='store', type=int, default=32)
     parser.add_argument('--n_epochs', action='store', type=int, default=10)
-    parser.add_argument('--batch_size', action='store', type=int, default=200)
+    parser.add_argument('--batch_size', action='store', type=int, default=1000)
     return parser.parse_args()
 
 def worker_init_fn(worker_id):
     random.seed(worker_id)
 
-def make_dataloader(application, index, batch_size, train=True):
+def make_dataloader(index, train=True):
+    if train:
+        app = all_data['application_train']
+    else:
+        app = all_data['application_test']
     loader = torch.utils.data.DataLoader(
-        HomeCreditDataset(application, index=index),
-        batch_size=batch_size,
+        HomeCreditDataset(app, sequences, index=index),
+        batch_size=args.batch_size,
         shuffle=train,
         num_workers=6,
         worker_init_fn=worker_init_fn
     )
     return loader
 
+
 if __name__ == "__main__":
     seed = 1234
     seed_everything(seed)
     args = parse_args()
 
-    app_train = read_file_with_dtypes('../data/04_powertransform/application_train.csv')
-    app_test = read_file_with_dtypes('../data/04_powertransform/application_test.csv')
-    app_train, app_test = fillna_app(app_train, app_test)
-
-    dims = get_dims({'application_train': app_train})
-    cat_dims, emb_dims, cont_dim = dims['application_train']
-    n_input = emb_dims.sum() + cont_dim
-    n_hidden = args.n_hidden
+    all_data = read_all(directory='../data/04_powertransform')
+    all_data = fillna_all(all_data)
+    dims = get_dims(all_data)
+    sequences = read_sequences()
 
     # CV
-    '''
     skf = StratifiedKFold(n_splits=5, random_state=seed)
-    folds = skf.split(app_train['SK_ID_CURR'], app_train['TARGET'])
+    folds = skf.split(all_data['application_train']['SK_ID_CURR'], all_data['application_train']['TARGET'])
     for i, (train_index, val_index) in enumerate(folds):
-        train_dataloader = make_dataloader(app_train, train_index, args.batch_size)
-        val_dataloader = make_dataloader(app_train, val_index, args.batch_size)
+        train_dataloader = make_dataloader(train_index)
+        val_dataloader = make_dataloader(val_index)
         model = LightningModel(
-            MLP(cat_dims, emb_dims, n_input, n_hidden),
+            R2N(dims, args.n_hidden, args.n_main),
             nn.BCEWithLogitsLoss(),
             train_dataloader,
             val_dataloader,
@@ -62,7 +63,7 @@ if __name__ == "__main__":
         logger = pl.logging.MLFlowLogger(
             experiment_name='HomeCredit',
             tracking_uri='../logs/mlruns',
-            tags={'mlflow.runName': f'MLP-FOLD:{i+1}'}
+            tags={'mlflow.runName': f'R2N-FOLD:{i+1}'}
         )
         trainer = pl.Trainer(
             default_save_path='../logs',
@@ -73,12 +74,11 @@ if __name__ == "__main__":
             row_log_interval=100
         )
         trainer.fit(model)
-    '''
-    
+
     # Predict
-    train_dataloader = make_dataloader(app_train, None, args.batch_size)
+    train_dataloader = make_dataloader(None)
     model = LightningModelNoVal(
-        MLP(cat_dims, emb_dims, n_input, n_hidden),
+        R2N(dims, args.n_hidden, args.n_main),
         nn.BCEWithLogitsLoss(),
         train_dataloader,
         args
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     )
     trainer.fit(model)
 
-    test_dataloader = make_dataloader(app_test, None, args.batch_size, train=False)
+    test_dataloader = make_dataloader(None, train=False)
     with torch.no_grad():
         model.cpu().eval()
         ids = []
@@ -105,4 +105,4 @@ if __name__ == "__main__":
         'SK_ID_CURR': ids,
         'TARGET': y_pred
     })
-    df_submission.to_csv('../submission/05_mlp.csv', index=False)
+    df_submission.to_csv('../submission/07_r2n.csv', index=False)
