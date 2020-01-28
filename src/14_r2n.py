@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+from pytorch_lightning.logging import MLFlowLogger
 from sklearn.model_selection import StratifiedKFold
 
 from util import seed_everything, read_all, get_dims, read_sequences, fillna_all, HomeCreditDataset
@@ -12,6 +13,7 @@ from model import R2N
 
 def parse_args():
     parser = argparse.ArgumentParser(description='LSTM')
+    parser.add_argument('--seed', action='store', type=int, default=1234)
     parser.add_argument('--lr', action='store', type=float, default=1e-3)
     parser.add_argument('--n_hidden', action='store', type=int, default=16)
     parser.add_argument('--n_main', action='store', type=int, default=32)
@@ -38,9 +40,8 @@ def make_dataloader(index, train=True):
 
 
 if __name__ == "__main__":
-    seed = 1234
-    seed_everything(seed)
     args = parse_args()
+    seed_everything(args.seed)
 
     all_data = read_all(directory='../data/04_powertransform')
     all_data = fillna_all(all_data)
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     sequences = read_sequences()
 
     # CV
-    skf = StratifiedKFold(n_splits=5, random_state=seed)
+    skf = StratifiedKFold(n_splits=5)
     folds = skf.split(all_data['application_train']['SK_ID_CURR'], all_data['application_train']['TARGET'])
     for i, (train_index, val_index) in enumerate(folds):
         train_dataloader = make_dataloader(train_index)
@@ -60,7 +61,7 @@ if __name__ == "__main__":
             val_dataloader,
             args
         )
-        logger = pl.logging.MLFlowLogger(
+        logger = MLFlowLogger(
             experiment_name='HomeCredit',
             tracking_uri='../logs/mlruns',
             tags={'mlflow.runName': f'R2N-FOLD:{i+1}'}
@@ -68,7 +69,7 @@ if __name__ == "__main__":
         trainer = pl.Trainer(
             default_save_path='../logs',
             gpus=-1,
-            max_nb_epochs=args.n_epochs,
+            max_epochs=args.n_epochs,
             early_stop_callback=None,
             logger=logger,
             row_log_interval=100
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         default_save_path='../logs',
         gpus=-1,
-        max_nb_epochs=args.n_epochs,
+        max_epochs=args.n_epochs,
         early_stop_callback=None
     )
     trainer.fit(model)

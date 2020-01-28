@@ -12,6 +12,7 @@ from model import MLP
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MLP')
+    parser.add_argument('--seed', action='store', type=int, default=1234)
     parser.add_argument('--lr', action='store', type=float, default=1e-3)
     parser.add_argument('--n_hidden', action='store', type=int, default=256)
     parser.add_argument('--n_epochs', action='store', type=int, default=10)
@@ -32,9 +33,8 @@ def make_dataloader(application, index, batch_size, train=True):
     return loader
 
 if __name__ == "__main__":
-    seed = 1234
-    seed_everything(seed)
     args = parse_args()
+    seed_everything(args.seed)
 
     app_train = read_file_with_dtypes('../data/04_powertransform/application_train.csv')
     app_test = read_file_with_dtypes('../data/04_powertransform/application_test.csv')
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     # CV
     '''
-    skf = StratifiedKFold(n_splits=5, random_state=seed)
+    skf = StratifiedKFold(n_splits=5)
     folds = skf.split(app_train['SK_ID_CURR'], app_train['TARGET'])
     for i, (train_index, val_index) in enumerate(folds):
         train_dataloader = make_dataloader(app_train, train_index, args.batch_size)
@@ -59,17 +59,11 @@ if __name__ == "__main__":
             val_dataloader,
             args
         )
-        logger = pl.logging.MLFlowLogger(
-            experiment_name='HomeCredit',
-            tracking_uri='../logs/mlruns',
-            tags={'mlflow.runName': f'MLP-FOLD:{i+1}'}
-        )
         trainer = pl.Trainer(
             default_save_path='../logs',
             gpus=-1,
-            max_nb_epochs=args.n_epochs,
+            max_epochs=args.n_epochs,
             early_stop_callback=None,
-            logger=logger,
             row_log_interval=100
         )
         trainer.fit(model)
@@ -86,7 +80,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         default_save_path='../logs',
         gpus=-1,
-        max_nb_epochs=args.n_epochs,
+        max_epochs=args.n_epochs,
         early_stop_callback=None
     )
     trainer.fit(model)

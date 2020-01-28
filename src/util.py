@@ -1,3 +1,7 @@
+"""
+各種ユーティリティ関数やクラス
+"""
+
 import os
 import pathlib
 import pickle
@@ -5,6 +9,9 @@ import random
 import numpy as np
 import pandas as pd
 import torch
+
+from model import max_len
+
 
 def seed_everything(seed=1234):
     random.seed(seed)
@@ -14,7 +21,20 @@ def seed_everything(seed=1234):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
 
-def read_file_with_dtypes(file):
+def save_df_with_dtypes(df: pd.DataFrame, file: str) -> None:
+    """
+    DataFrameをCSVに、型をpickleに保存する
+    """
+    file = pathlib.Path(file)
+    df.to_csv(file, index=False)
+    dtypes_file = file.parent / f'dtypes_{file.stem}.pkl'
+    with open(dtypes_file, mode='wb') as file:
+        pickle.dump(df.dtypes.to_dict(), file)
+
+def read_file_with_dtypes(file: pathlib.Path) -> pd.DataFrame:
+    """
+    同じフォルダの型ファイルの型を使用してCSVからDataFrameを読み取る
+    """
     if type(file) is str:
         file = pathlib.Path(file)
     dtypes_file = file.parent / f'dtypes_{file.stem}.pkl'
@@ -31,19 +51,12 @@ def read_all(directory='../data/01_labelencoding'):
         datas[file.stem] = read_file_with_dtypes(file)
     return datas
 
-def read_sequences(directory='../data/06_sequence'):
+def read_sequences(directory='../data/04_sequence'):
     datas = {}
     for file in pathlib.Path(directory).glob('*.pkl'):
         with open(file, mode='rb') as f:
             datas[file.stem] = pickle.load(f)
     return datas
-
-def save_df_with_dtypes(df: pd.DataFrame, file: str):
-    file = pathlib.Path(file)
-    df.to_csv(file, index=False)
-    dtypes_file = file.parent / f'dtypes_{file.stem}.pkl'
-    with open(dtypes_file, mode='wb') as file:
-        pickle.dump(df.dtypes.to_dict(), file)
 
 def get_dims(all_data):
     dims = {}
@@ -60,23 +73,19 @@ def get_dims(all_data):
         dims[key] = (cat_dims, emb_dims, cont_dim)
     return dims
 
-def fillna_app(app_train, app_test):
-    app = app_train.append(app_test, sort=False)
-    for column in app.columns[app.isnull().any()]:
-        app[column + '_NAN'] = app[column].isnull().astype(int).astype('category')
-    app_train = app.dropna(subset=['TARGET'])
-    app_train = app_train.fillna(0)
-    app_test = app[app['TARGET'].isnull()].drop('TARGET', axis=1)
-    app_test = app_test.fillna(0)
-    return app_train, app_test
+sort_keys = {
+    'bureau': 'SK_ID_BUREAU',
+    'bureau_balance': ['SK_ID_BUREAU', 'MONTHS_BALANCE'],
+    'previous_application': 'SK_ID_PREV',
+    'POS_CASH_balance': ['SK_ID_PREV', 'MONTHS_BALANCE'],
+    'installments_payments': ['SK_ID_PREV', 'DAYS_INSTALMENT'],
+    'credit_card_balance': ['SK_ID_PREV', 'MONTHS_BALANCE']
+}
 
-def fillna_all(all_data):
-    all_data['application_train'], all_data['application_test'] = fillna_app(all_data['application_train'], all_data['application_test'])
-    for key, df in all_data.items():
-        for column in df.columns[df.isnull().any()]:
-            df[column + '_NAN'] = df[column].isnull().astype(int).astype('category')
-        all_data[key] = df.fillna(0)
-    return all_data
+def expand(a):
+    z = np.zeros((max_len - a.shape[0], a.shape[1]), a.dtype)
+    return np.concatenate([z, a])
+
 
 class HomeCreditDataset(torch.utils.data.Dataset):
     def __init__(self, app, sequences=None, index=None):

@@ -1,7 +1,10 @@
+"""
+前処理その２
+featuretoolsを用いて集計特徴量を作成する。
+"""
+
 import logging
-import pickle
 import numpy as np
-import pandas as pd
 import featuretools as ft
 import lightgbm
 
@@ -57,7 +60,7 @@ feature_matrix, feature_names = ft.dfs(
 )
 
 feature_matrix = feature_matrix.reset_index()
-save_df_with_dtypes(feature_matrix, '../data/03_featuretools/feature_matrix.csv')
+save_df_with_dtypes(feature_matrix, '../data/02_featuretools/feature_matrix.csv')
 
 df_train = feature_matrix.dropna(subset=['TARGET'])
 df_test = feature_matrix[feature_matrix['TARGET'].isnull()].drop('TARGET', axis=1)

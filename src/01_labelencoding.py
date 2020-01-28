@@ -1,8 +1,19 @@
+"""
+前処理１
+・「DAYS_...」に含まれる外れ値 365243 をnp.nanに置き換える
+・0/1のみの数値列をカテゴリーとして扱う
+・カテゴリー列をLabelEncodingする（欠損値もカテゴリーの一つとして扱う）
+
+これらの処理を行ったものがLightGBMの入力となる
+"""
+
 import pathlib
 import pickle
+from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+
 
 def preprocess(df):
     # outlier
@@ -28,15 +39,22 @@ def save(df, filename):
     with open(f'../data/01_labelencoding/dtypes_{filename}.pkl', mode='wb') as f:
         pickle.dump(df.dtypes.to_dict(), f)
 
+def process(file):
+    print(file.name)
+    df = pd.read_csv(file)
+    df = preprocess(df)
+    save(df, file.stem)
+
+
 if __name__ == "__main__":
-    df_train = pd.read_csv('../input/application_train.csv')
-    df_test = pd.read_csv('../input/application_test.csv')
-    data = df_train.append(df_test, sort=False)
-    data = preprocess(data)
-    df_train = data.dropna(subset=['TARGET'])
-    df_test = data[data['TARGET'].isnull()].drop('TARGET', axis=1)
-    save(df_train, 'application_train')
-    save(df_test, 'application_test')
+    app_train = pd.read_csv('../input/application_train.csv')
+    app_test = pd.read_csv('../input/application_test.csv')
+    app = app_train.append(app_test, sort=False)
+    app = preprocess(app)
+    app_train = app.dropna(subset=['TARGET'])
+    app_test = app[app['TARGET'].isnull()].drop('TARGET', axis=1)
+    save(app_train, 'application_train')
+    save(app_test, 'application_test')
 
     except_files = [
         'HomeCredit_columns_description.csv',
@@ -44,12 +62,9 @@ if __name__ == "__main__":
         'application_train.csv',
         'application_test.csv'
     ]
-
-    for file in pathlib.Path('../input').glob('*.csv'):
-        if file.name in except_files:
-            continue
-        else:
-            print(file.name)
-            df = pd.read_csv(file)
-            df = preprocess(df)
-            save(df, file.stem)
+    target_files = [
+        file for file in pathlib.Path('../input').glob('*.csv') if file.name not in except_files
+    ]
+    
+    with Pool(6) as pool:
+        pool.map(process, target_files)
