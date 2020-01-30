@@ -18,11 +18,11 @@ def process(df_sk_id_curr, item):
     name, df = item
     print(f'--- {name} ---')
     cont = {}
+    drop_cols = [column for column in df.columns if column.startswith('SK_ID')]
     for sk_id_curr in tqdm(df_sk_id_curr['SK_ID_CURR']):
         data = df.query('SK_ID_CURR == @sk_id_curr').sort_values(sort_keys[name]).tail(max_len)
-        drop_cols = [column for column in df.columns if column.startswith('SK_ID')]
         data = data.drop(drop_cols, axis=1)
-        cont[sk_id_curr] = expand(data.values)
+        cont[sk_id_curr] = expand(data.values, max_len)
     with open(f'../data/06_onehot_seq/{name}.pkl', mode='wb') as file:
         pickle.dump(cont, file)
 
@@ -36,10 +36,9 @@ def main():
 
     bureau = all_data['bureau']
     bureau_balance = all_data['bureau_balance']
-    all_data['bureau_balance'] = pd.merge(bureau, bureau_balance, on='SK_ID_BUREAU')[['SK_ID_CURR', 'SK_ID_BUREAU', 'MONTHS_BALANCE', 'STATUS']]
+    all_data['bureau_balance'] = pd.merge(bureau[['SK_ID_CURR', 'SK_ID_BUREAU']], bureau_balance, on='SK_ID_BUREAU')
 
     id_list = [df_sk_id_curr] * len(all_data)
-
     with Pool(6) as pool:
         pool.starmap(process, zip(id_list, list(all_data.items())))
 

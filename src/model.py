@@ -29,6 +29,24 @@ class MLP(nn.Module):
         return self.main(app)
 
 
+class MLPOneHot(nn.Module):
+    def __init__(self, n_input, n_hidden):
+        super().__init__()
+        self.main = nn.Sequential(
+            nn.Linear(n_input, n_hidden),
+            nn.BatchNorm1d(n_hidden),
+            nn.Dropout(),
+            nn.ReLU(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.BatchNorm1d(n_hidden),
+            nn.Dropout(),
+            nn.ReLU(),
+            nn.Linear(n_hidden, 1),
+        )
+    def forward(self, x):
+        return self.main(x)
+
+
 class R2NModule(nn.Module):
     def __init__(self, diminfo, n_hidden):
         super().__init__()
@@ -129,7 +147,7 @@ class R2NCNNModule(nn.Module):
             self.emb_layers = None
             n_input = int(cont_dim)
         self.conv1 = nn.Conv2d(1, n_hidden, (1, n_input))
-        self.conv2 = nn.Conv2d(n_hidden, n_hidden, (max_len, 1))
+        self.conv2 = nn.Conv2d(1, n_hidden, (max_len, 1))
 
     def forward(self, x):
         cat, cont = x
@@ -147,8 +165,10 @@ class R2NCNNModule(nn.Module):
         # x : batch_size * channel(=1) * sequence_length * n_input
         x = torch.relu(self.conv1(x))
         # x : batch_size * n_hidden * sequence_length * 1
+        x = torch.transpose(x, 1, 3)
+        # x : batch_size * channel(=1) * sequence_length * n_hidden
         x = torch.relu(self.conv2(x))
-        # x : batch_size * n_hidden * 1 * 1
+        # x : batch_size * 1 * 1 * n_hidden
         return x.squeeze()
 
 

@@ -20,8 +20,8 @@ def process(df_sk_id_curr, item):
     cont = {}
     for sk_id_curr in tqdm(df_sk_id_curr['SK_ID_CURR']):
         data = df.query('SK_ID_CURR == @sk_id_curr').sort_values(sort_keys[name]).tail(max_len)
-        cat[sk_id_curr] = expand(data.select_dtypes('category').astype('int').values + 1)
-        cont[sk_id_curr] = expand(data.select_dtypes('float32').values)
+        cat[sk_id_curr] = expand(data.select_dtypes('category').astype('int').values + 1, max_len)
+        cont[sk_id_curr] = expand(data.select_dtypes('float32').values, max_len)
     with open(f'../data/04_sequence/{name}_cat.pkl', mode='wb') as file:
         pickle.dump(cat, file)
     with open(f'../data/04_sequence/{name}_cont.pkl', mode='wb') as file:
@@ -33,14 +33,13 @@ def main():
     app_train = all_data.pop('application_train')
     app_test = all_data.pop('application_test')
     df_sk_id_curr = pd.concat([app_train[['SK_ID_CURR']], app_test[['SK_ID_CURR']]])
-    # df_sk_id_curr = df_sk_id_curr.head(100)
+    df_sk_id_curr = df_sk_id_curr.head(100)
 
     bureau = all_data['bureau']
     bureau_balance = all_data['bureau_balance']
     all_data['bureau_balance'] = pd.merge(bureau, bureau_balance, on='SK_ID_BUREAU')[['SK_ID_CURR', 'SK_ID_BUREAU', 'MONTHS_BALANCE', 'STATUS']]
 
     id_list = [df_sk_id_curr] * len(all_data)
-
     with Pool(6) as pool:
         pool.starmap(process, zip(id_list, list(all_data.items())))
 
