@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import featuretools as ft
 
-from util import read_all, save_df_with_dtypes
+from util import read_all, dump
 
 def main():
     formatter = '%(asctime)s %(message)s'
@@ -64,7 +64,7 @@ def main():
     )
 
     feature_matrix = feature_matrix.reset_index()
-    save_df_with_dtypes(feature_matrix, '../data/02_featuretools/feature_matrix.csv')
+    dump(feature_matrix, '../data/02_featuretools/feature_matrix.joblib')
 
 if __name__ == "__main__":
     main()

@@ -4,7 +4,7 @@
 
 import os
 import pathlib
-import pickle
+import joblib
 import random
 import numpy as np
 import pandas as pd
@@ -19,46 +19,24 @@ def seed_everything(seed=1234):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
 
-def save_df_with_dtypes(df: pd.DataFrame, file: str) -> None:
-    """
-    DataFrameをCSVに、型をpickleに保存する
-    """
-    file = pathlib.Path(file)
-    df.to_csv(file, index=False)
-    dtypes_file = file.parent / f'dtypes_{file.stem}.pkl'
-    with open(dtypes_file, mode='wb') as file:
-        pickle.dump(df.dtypes.to_dict(), file)
-
-def read_file_with_dtypes(file: pathlib.Path) -> pd.DataFrame:
-    """
-    同じフォルダの型ファイルの型を使用してCSVからDataFrameを読み取る
-    """
-    if type(file) is str:
-        file = pathlib.Path(file)
-    dtypes_file = file.parent / f'dtypes_{file.stem}.pkl'
-    if dtypes_file.exists():
-        with open(dtypes_file, mode='rb') as f:
-            dtypes = pickle.load(f)
-        return pd.read_csv(file, dtype=dtypes)
-    else:
-        return pd.read_csv(file)
+def dump(data, file):
+    joblib.dump(data, file, compress=True)
 
 def read_all(directory='../data/01_labelencoding'):
     datas = {}
-    for file in pathlib.Path(directory).glob('*.csv'):
-        datas[file.stem] = read_file_with_dtypes(file)
+    for file in pathlib.Path(directory).glob('*.joblib'):
+        datas[file.stem] = joblib.load(file)
     return datas
 
 def read_sequences(directory='../data/06_onehot_seq'):
     datas = {}
-    for file in pathlib.Path(directory).glob('*.pkl'):
-        with open(file, mode='rb') as f:
-            datas[file.stem] = pickle.load(f)
+    for file in pathlib.Path(directory).glob('*.joblib'):
+        datas[file.stem] = joblib.load(file)
     return datas
 
 def get_dims(all_data):
     dims = {}
-    for key, df in all_data.items():
+    for name, df in all_data.items():
         key_cols = df.columns[df.columns.str.startswith('SK_ID') + df.columns.str.match('TARGET')].values
         df = df.drop(key_cols, axis=1)
         if len(df.select_dtypes('category').columns) > 0:
@@ -68,10 +46,10 @@ def get_dims(all_data):
             cat_dims = None
             emb_dims = None
         cont_dim = len(df.select_dtypes(exclude='category').columns)
-        dims[key] = (cat_dims, emb_dims, cont_dim)
+        dims[name] = (cat_dims, emb_dims, cont_dim)
     return dims
 
-sort_keys = {
+SORT_KEYS = {
     'bureau': 'SK_ID_BUREAU',
     'bureau_balance': ['SK_ID_BUREAU', 'MONTHS_BALANCE'],
     'previous_application': 'SK_ID_PREV',
@@ -91,11 +69,11 @@ class HomeCreditDataset(torch.utils.data.Dataset):
         if 'TARGET' in app.columns:
             self.target = app[['TARGET']]
             self.app_cat = app.drop(['SK_ID_CURR', 'TARGET'], axis=1).select_dtypes('category').astype('int')
-            self.app_cont = app.drop(['SK_ID_CURR', 'TARGET'], axis=1).select_dtypes('float32')
+            self.app_cont = app.drop(['SK_ID_CURR', 'TARGET'], axis=1).select_dtypes(exclude='category')
         else:
             self.target = None
             self.app_cat = app.drop(['SK_ID_CURR'], axis=1).select_dtypes('category').astype('int')
-            self.app_cont = app.drop(['SK_ID_CURR'], axis=1).select_dtypes('float32')
+            self.app_cont = app.drop(['SK_ID_CURR'], axis=1).select_dtypes(exclude='category')
         self.sequences = sequences
         self.index = index
         
@@ -185,21 +163,31 @@ def worker_init_fn(worker_id):
     random.seed(worker_id)
 
 class LoaderMaker:
-    def __init__(self, all_data, sequences, args):
+    def __init__(self, all_data, sequences, args, onehot=False):
         self.all_data = all_data
         self.sequences = sequences
         self.args = args
+        self.onehot = onehot
         
     def make(self, index=None, train=True):
         if train:
             app = self.all_data['application_train']
         else:
             app = self.all_data['application_test']
-        loader = torch.utils.data.DataLoader(
-            HomeCreditDataset(app, self.sequences, index=index),
-            batch_size=self.args.batch_size,
-            shuffle=train,
-            num_workers=6,
-            worker_init_fn=worker_init_fn
-        )
+        if self.onehot:
+            loader = torch.utils.data.DataLoader(
+                OneHotDataset(app, self.sequences, index=index),
+                batch_size=self.args.batch_size,
+                shuffle=train,
+                num_workers=6,
+                worker_init_fn=worker_init_fn
+            )
+        else:
+            loader = torch.utils.data.DataLoader(
+                HomeCreditDataset(app, self.sequences, index=index),
+                batch_size=self.args.batch_size,
+                shuffle=train,
+                num_workers=6,
+                worker_init_fn=worker_init_fn
+            )
         return loader

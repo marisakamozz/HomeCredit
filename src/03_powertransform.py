@@ -12,7 +12,7 @@ from multiprocessing import Pool
 import pandas as pd
 from sklearn.preprocessing import PowerTransformer
 
-from util import read_all, save_df_with_dtypes
+from util import read_all, dump
 
 def power_transform(df):
     for column in df.select_dtypes(include=['int', 'float']).columns:
@@ -55,7 +55,7 @@ def process(item):
     df = power_transform(df)
     df = fillna(df)
     df = drop_same_columns(df)
-    save_df_with_dtypes(df, f'../data/03_powertransform/{name}.csv')
+    dump(df, f'../data/03_powertransform/{name}.joblib')
 
 
 if __name__ == "__main__":
@@ -68,8 +68,8 @@ if __name__ == "__main__":
     app = drop_same_columns(app)
     app_train = app.dropna(subset=['TARGET'])
     app_test = app[app['TARGET'].isnull()].drop('TARGET', axis=1)
-    save_df_with_dtypes(app_train, '../data/03_powertransform/application_train.csv')
-    save_df_with_dtypes(app_test, '../data/03_powertransform/application_test.csv')
+    dump(app_train, '../data/03_powertransform/application_train.joblib')
+    dump(app_test, '../data/03_powertransform/application_test.joblib')
 
     with Pool(6) as pool:
         pool.map(process, list(datas.items()))

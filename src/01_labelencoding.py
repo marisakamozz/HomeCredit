@@ -8,12 +8,12 @@
 """
 
 import pathlib
-import pickle
 from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
+from util import dump
 
 def preprocess(df):
     # outlier
@@ -35,9 +35,7 @@ def preprocess(df):
     return df
 
 def save(df, filename):
-    df.to_csv(f'../data/01_labelencoding/{filename}.csv', index=False)
-    with open(f'../data/01_labelencoding/dtypes_{filename}.pkl', mode='wb') as f:
-        pickle.dump(df.dtypes.to_dict(), f)
+    dump(df, f'../data/01_labelencoding/{filename}.joblib')
 
 def process(file):
     print(file.name)
@@ -45,8 +43,7 @@ def process(file):
     df = preprocess(df)
     save(df, file.stem)
 
-
-if __name__ == "__main__":
+def main():
     app_train = pd.read_csv('../input/application_train.csv')
     app_test = pd.read_csv('../input/application_test.csv')
     app = app_train.append(app_test, sort=False)
@@ -68,3 +65,7 @@ if __name__ == "__main__":
     
     with Pool(6) as pool:
         pool.map(process, target_files)
+
+
+if __name__ == "__main__":
+    main()

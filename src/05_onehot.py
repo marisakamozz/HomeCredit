@@ -6,12 +6,12 @@
 """
 from multiprocessing import Pool
 import pandas as pd
-from util import read_all, save_df_with_dtypes
+from util import read_all, dump
 
 def process(item):
     name, df = item
     df = pd.get_dummies(df)
-    save_df_with_dtypes(df, f'../data/05_onehot/{name}.csv')
+    dump(df, f'../data/05_onehot/{name}.joblib')
 
 def main():
     all_data = read_all(directory='../data/03_powertransform')
@@ -21,8 +21,8 @@ def main():
     data = pd.get_dummies(data)
     app_train = data.dropna(subset=['TARGET'])
     app_test = data[data['TARGET'].isnull()].drop('TARGET', axis=1)
-    save_df_with_dtypes(app_train, '../data/05_onehot/application_train.csv')
-    save_df_with_dtypes(app_test, '../data/05_onehot/application_test.csv')
+    dump(app_train, '../data/05_onehot/application_train.joblib')
+    dump(app_test, '../data/05_onehot/application_test.joblib')
     with Pool(6) as pool:
         pool.map(process, list(all_data.items()))
 
