@@ -5,10 +5,11 @@ featuretoolsを利用して作成した集計特徴量を用いてLightGBMで予
 """
 
 import argparse
+import joblib
 import lightgbm
 import mlflow
 
-from util import seed_everything, read_file_with_dtypes
+from util import seed_everything
 
 def parse_args():
     parser = argparse.ArgumentParser(description='featuretools')
@@ -20,7 +21,7 @@ def parse_args():
 def main(args):
     seed_everything(args.seed)
 
-    feature_matrix = read_file_with_dtypes('../data/02_featuretools/feature_matrix.csv')
+    feature_matrix = joblib.load('../data/02_featuretools/feature_matrix.joblib')
     df_train = feature_matrix.dropna(subset=['TARGET'])
     df_test = feature_matrix[feature_matrix['TARGET'].isnull()].drop('TARGET', axis=1)
 

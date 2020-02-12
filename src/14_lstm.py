@@ -7,7 +7,7 @@ from plutil import LightningModel, HomeCreditTrainer, load_model, predict
 from model import R2N
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='R2N-LSTM')
+    parser = argparse.ArgumentParser(description='LSTM')
     parser.add_argument('--onehot', action='store_true')  # default=False
     parser.add_argument('--seed', action='store', type=int, default=1234)
     parser.add_argument('--lr', action='store', type=float, default=1e-3)
@@ -32,7 +32,7 @@ def main():
     loader_maker = LoaderMaker(all_data, sequences, args, onehot=args.onehot)
 
     # CV
-    name = 'R2N-LSTM-ONEHOT' if args.onehot else 'R2N-LSTM-LABEL'
+    name = '14_lstm-onehot' if args.onehot else '14_lstm-label'
     skf = StratifiedKFold(n_splits=5)
     folds = skf.split(all_data['application_train']['SK_ID_CURR'], all_data['application_train']['TARGET'])
     best_models = []

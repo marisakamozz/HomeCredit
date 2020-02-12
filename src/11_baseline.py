@@ -4,10 +4,11 @@
 メインテーブルのみを利用してLightGBMで予測を行う。
 """
 import argparse
+import joblib
 import lightgbm as lgb
 import mlflow
 
-from util import seed_everything, read_file_with_dtypes
+from util import seed_everything
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Baseline')
@@ -19,7 +20,7 @@ def parse_args():
 def main(args):
     seed_everything(args.seed)
     # Train
-    df_train = read_file_with_dtypes('../data/01_labelencoding/application_train.csv')
+    df_train = joblib.load('../data/01_labelencoding/application_train.joblib')
     x_train = df_train.drop('TARGET', axis=1)
     y_train = df_train['TARGET']
     train_set = lgb.Dataset(x_train, y_train)
@@ -32,7 +33,7 @@ def main(args):
         mlflow.log_metric('auc', metric, step=i)
 
     # Predict
-    df_test = read_file_with_dtypes('../data/01_labelencoding/application_test.csv')
+    df_test = joblib.load('../data/01_labelencoding/application_test.joblib')
     x_test = df_test
     model = lgb.train(params, train_set)
     y_pred = model.predict(x_test)

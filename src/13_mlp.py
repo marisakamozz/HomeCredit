@@ -86,7 +86,7 @@ def main():
             val_dataloader,
             args
         )
-        name = 'MLP-ONEHOT' if args.onehot else 'MLP-LABEL'
+        name = '13_mlp-onehot' if args.onehot else '13_mlp-label'
         trainer = HomeCreditTrainer(name, args.n_epochs, args.patience)
         trainer.fit(model)
 

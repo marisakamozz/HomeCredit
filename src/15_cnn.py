@@ -32,7 +32,7 @@ def main():
     loader_maker = LoaderMaker(all_data, sequences, args, onehot=args.onehot)
 
     # CV
-    name = 'R2N-CNN-ONEHOT' if args.onehot else 'R2N-CNN-LABEL'
+    name = '15_cnn-onehot' if args.onehot else '15_cnn-label'
     skf = StratifiedKFold(n_splits=5)
     folds = skf.split(all_data['application_train']['SK_ID_CURR'], all_data['application_train']['TARGET'])
     best_models = []
