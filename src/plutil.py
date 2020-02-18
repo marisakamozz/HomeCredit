@@ -92,8 +92,8 @@ class HomeCreditTrainer(pl.Trainer):
         )
 
 
-def load_model(model, name, version):
-    filepath = pathlib.Path('../logs') / name / f'version_{version}' / 'checkpoints'
+def load_model(model, name, version, logdir='../logs'):
+    filepath = pathlib.Path(logdir) / name / f'version_{version}' / 'checkpoints'
     filename = next(iter(filepath.glob('*.ckpt')))
     checkpoint = torch.load(filename)
     model.load_state_dict(checkpoint['state_dict'])

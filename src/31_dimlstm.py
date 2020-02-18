@@ -1,15 +1,13 @@
 """
-ベースラインモデル
-
-メインテーブルのみを利用してLightGBMで予測を行う。
+DIM (LSTM) で生成した特徴量でLightGBMで予測
 """
 import argparse
 import joblib
 
-from util import run_lgb
+from util import read_all, run_lgb
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Baseline')
+    parser = argparse.ArgumentParser(description='DIM-LSTM FEATURE')
     parser.add_argument('--seed', action='store', type=int, default=1234)
     parser.add_argument('--objective', action='store', type=str, default='binary')
     parser.add_argument('--n_estimators', action='store', type=int, default=10000)
@@ -21,7 +19,13 @@ def main():
     args = parse_args()
     app_train = joblib.load('../data/01_labelencoding/application_train.joblib')
     app_test = joblib.load('../data/01_labelencoding/application_test.joblib')
-    run_lgb(args, app_train, app_test, '11_baseline')
+    features = read_all('../data/21_dimlstm')
+    for feature in features.values():
+        app_train = app_train.merge(feature)
+        app_test = app_test.merge(feature)
+    
+    run_lgb(args, app_train, app_test, '31_dimlstm')
+
 
 if __name__ == "__main__":
     main()

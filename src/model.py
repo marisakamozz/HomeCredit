@@ -88,13 +88,15 @@ class R2NOneHotModule(nn.Module):
     def __init__(self, diminfo, n_hidden):
         super().__init__()
         _, _, cont_dim = diminfo
-        self.lstm = nn.LSTM(cont_dim, n_hidden, batch_first=True)
+        self.lstm = nn.LSTM(cont_dim, n_hidden)
         self.main = nn.Sequential(
             nn.Linear(n_hidden, n_hidden),
             nn.ReLU(),
         )
     def forward(self, x):
         # x : batch_size * sequence_length * n_input
+        x = x.transpose(0, 1)
+        # x : sequence_length * batch_size * n_input
         _, (h, _) = self.lstm(x)
         # h : 1 * batch_size * n_hidden
         return self.main(h.squeeze(dim=0))
@@ -305,3 +307,189 @@ class R2NCNN(nn.Module):
         # print(f'prev:{prev.size()}, cash:{cash.size()}, inst:{inst.size()}, credit:{credit.size()}')
         x = torch.cat([app, bureau, bb, prev, cash, inst, credit], dim=1)
         return self.main(x)
+
+
+class LSTMEncoder(nn.Module):
+    def __init__(self, diminfo, n_hidden):
+        super().__init__()
+        cat_dims, emb_dims, cont_dim = diminfo
+        if cat_dims is not None:
+            cat_dims += 1
+            self.emb_layers = nn.ModuleList([
+                nn.Embedding(x, y) for x, y in zip(cat_dims, emb_dims)
+            ])
+            n_input = int(emb_dims.sum() + cont_dim)
+        else:
+            self.emb_layers = None
+            n_input = int(cont_dim)
+        self.lstm = nn.LSTM(n_input, n_hidden)
+        self.main = nn.Sequential(
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+        )
+    def forward(self, x):
+        cat, cont = x
+        if cat is not None:
+            # cat : batch_size * sequence_length * number_of_categorical_features
+            cat = [emb_layer(cat[:, :, i]) for i, emb_layer in enumerate(self.emb_layers)]
+            cat = torch.cat(cat, dim=2)
+            # cat : batch_size * sequence_length * sum_of_embdims
+            x = torch.cat([cat, cont], dim=2)
+            # x : batch_size * sequence_length * n_input
+        else:
+            x = cont
+        # x : batch_size * sequence_length * n_input
+        x = x.transpose(0, 1)
+        # x : sequence_length * batch_size * n_input
+        _, (h, _) = self.lstm(x)
+        # h : 1 * batch_size * n_hidden
+        return self.main(h.squeeze(dim=0))
+
+
+# for DIM
+class GlobalDiscriminator(nn.Module):
+    def __init__(self, diminfo, n_hidden):
+        super().__init__()
+        self.lstm_encoder = LSTMEncoder(diminfo, n_hidden)
+        self.main = nn.Sequential(
+            # batch_size * n_hidden*2
+            nn.Linear(n_hidden * 2, n_hidden),
+            nn.ReLU(),
+            # batch_size * n_hidden
+            nn.Linear(n_hidden, 1)
+        )
+    
+    def forward(self, z, x):
+        x = self.lstm_encoder(x)
+        # batch_size * n_hidden
+        zx = torch.cat([z, x], dim=1)
+        # batch_size * n_hidden*2
+        return self.main(zx)
+
+# for DIM
+class LocalDiscriminator(nn.Module):
+    def __init__(self, diminfo, n_hidden):
+        super().__init__()
+        cat_dims, emb_dims, cont_dim = diminfo
+        if cat_dims is not None:
+            cat_dims += 1
+            self.emb_layers = nn.ModuleList([
+                nn.Embedding(x, y) for x, y in zip(cat_dims, emb_dims)
+            ])
+            n_input = int(emb_dims.sum() + cont_dim)
+        else:
+            self.emb_layers = None
+            n_input = int(cont_dim)
+        self.lstm = nn.LSTM(n_input+n_hidden, n_hidden)
+        self.main = nn.Sequential(
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+            nn.Linear(n_hidden, 1)
+        )
+    
+    def forward(self, z, x):
+        cat, cont = x
+        if cat is not None:
+            # cat : batch_size * MAX_LEN * number_of_categorical_features
+            cat = [emb_layer(cat[:, :, i]) for i, emb_layer in enumerate(self.emb_layers)]
+            cat = torch.cat(cat, dim=2)
+            # cat : batch_size * MAX_LEN * sum_of_embdims
+            x = torch.cat([cat, cont], dim=2)
+            # x : batch_size * MAX_LEN * n_input
+        else:
+            x = cont
+        # x : batch_size * MAX_LEN * n_input
+        # z : batch_size * n_hidden
+        z = z.unsqueeze(-1).transpose(1, 2)
+        # z : batch_size * 1 * n_hidden
+        z = z.expand(-1, MAX_LEN, -1)
+        # z : batch_size * MAX_LEN * n_hidden
+        xz = torch.cat([x, z], dim=2)
+        # xz : batch_size * MAX_LEN * (n_input+n_hidden)
+        xz = xz.transpose(0, 1)
+        # xz : MAX_LEN * batch_size * (n_input+n_hidden)
+        _, (h, _) = self.lstm(xz)
+        # h : 1 * batch_size * n_hidden
+        return self.main(h.squeeze(dim=0))
+
+# for DIM
+class PriorDiscriminator(nn.Module):
+    def __init__(self, n_hidden):
+        super().__init__()
+        self.main = nn.Sequential(
+            # nz
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+            # n_hidden
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+            # n_hidden
+            nn.Linear(n_hidden, 1)
+        )
+    
+    def forward(self, z):
+        return self.main(z)
+
+
+# for VAE
+class VAELSTMEncoder(nn.Module):
+    def __init__(self, diminfo, n_hidden):
+        super().__init__()
+        _, _, cont_dim = diminfo
+        self.lstm = nn.LSTM(cont_dim, n_hidden)
+        self.fc1 = nn.Linear(n_hidden, n_hidden)
+        self.fc2 = nn.Linear(n_hidden, n_hidden)
+
+    def encode(self, x):
+        # x : batch_size * sequence_length * n_input
+        x = x.transpose(0, 1)
+        # x : sequence_length * batch_size * n_input
+        _, (h, _) = self.lstm(x)
+        # h : 1 * batch_size * n_hidden
+        h = h.squeeze(dim=0)
+        # h : batch_size * n_hidden
+        mu = self.fc1(h)
+        logvar = self.fc2(h)
+        return mu, logvar
+    
+    def forward(self, x):
+        mu, _ = self.encode(x)
+        return mu
+
+# for VAE
+class VAELSTM(nn.Module):
+    def __init__(self, diminfo, n_hidden):
+        super().__init__()
+        _, _, cont_dim = diminfo
+        self.encoder = VAELSTMEncoder(diminfo, n_hidden)
+        self.fc = nn.Linear(n_hidden, cont_dim)
+        self.lstm = nn.LSTM(cont_dim, cont_dim)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def decode(self, x, z):
+        # z : batch_size * n_hidden
+        z = self.fc(z).unsqueeze(0)
+        # z : 1 * batch_size * cont_dim
+        c = torch.rand_like(z, device=z.device)
+        # x : batch_size * sequence_length * cont_dim
+        x = x.transpose(0, 1)
+        # x : sequence_length * batch_size * cont_dim
+        sos = torch.zeros(1, x.size(1), x.size(2), device=x.device)
+        # sos : 1 * batch_size * cont_dim
+        x = torch.cat([sos, x], dim=0)[:x.size(0), :, :]
+        # x : sequence_length * batch_size * cont_dim
+        x, _ = self.lstm(x, (z, c))
+        # x : sequence_length * batch_size * cont_dim
+        x = x.transpose(0, 1)
+        # x : batch_size * sequence_length * cont_dim
+        return x
+
+    def forward(self, x):
+        mu, logvar = self.encoder.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decode(x, z), mu, logvar
+

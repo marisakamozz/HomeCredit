@@ -7,8 +7,12 @@ import pathlib
 import joblib
 import random
 import numpy as np
-import pandas as pd
 import torch
+import lightgbm as lgb
+import mlflow
+import mlflow.lightgbm
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
 
 
 def seed_everything(seed=1234):
@@ -191,3 +195,40 @@ class LoaderMaker:
                 worker_init_fn=worker_init_fn
             )
         return loader
+
+
+def run_lgb(args, app_train, app_test, name):
+    seed_everything(args.seed)
+
+    mlflow.set_tracking_uri('../logs/mlruns')
+    mlflow.set_experiment('HomeCredit')
+    params = vars(args)
+
+    x = app_train.drop(['SK_ID_CURR', 'TARGET'], axis=1)
+    y = app_train['TARGET']
+
+    skf = StratifiedKFold(n_splits=5)
+    best_models = []
+    for train_index, val_index in skf.split(x, y):
+        x_train, y_train = x.iloc[train_index], y.iloc[train_index]
+        x_valid, y_valid = x.iloc[val_index], y.iloc[val_index]
+        train_set = lgb.Dataset(x_train, y_train)
+        valid_set = lgb.Dataset(x_valid, y_valid)
+        model = lgb.train(params, train_set, valid_sets=[valid_set])
+        best_models.append(model)
+        y_pred = model.predict(x_valid)
+        auc = roc_auc_score(y_valid, y_pred)
+        with mlflow.start_run(run_name=name):
+            mlflow.log_params(params)
+            mlflow.log_metric('auc', auc)
+            mlflow.lightgbm.log_model(model, 'model')
+
+    # Predict
+    x_test = app_test.drop('SK_ID_CURR', axis=1)
+    df_submission = app_test[['SK_ID_CURR']].copy()
+    for i, model in enumerate(best_models):
+        y_pred = model.predict(x_test)
+        df_submission[f'pred_{i}'] = y_pred
+    df_submission = df_submission.set_index('SK_ID_CURR').mean(axis=1).reset_index()
+    df_submission.columns = ['SK_ID_CURR', 'TARGET']
+    df_submission.to_csv(f'../submission/{name}.csv', index=False)
