@@ -33,10 +33,7 @@ def read_all(directory='../data/01_labelencoding'):
     return datas
 
 def read_sequences(directory='../data/06_onehot_seq'):
-    datas = {}
-    for file in pathlib.Path(directory).glob('*.joblib'):
-        datas[file.stem] = joblib.load(file)
-    return datas
+    return read_all(directory)
 
 def get_dims(all_data):
     dims = {}

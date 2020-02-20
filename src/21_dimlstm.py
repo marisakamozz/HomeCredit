@@ -5,110 +5,12 @@ import joblib
 from tqdm import tqdm
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import pytorch_lightning as pl
 from pytorch_lightning.logging import TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from util import seed_everything, worker_init_fn, dump, read_sequences
-from model import LSTMEncoder, GlobalDiscriminator, LocalDiscriminator, PriorDiscriminator
-from plutil import load_model
-
-
-class DIMLSTM(pl.LightningModule):
-    def __init__(self, diminfo, n_hidden, train_loader, val_loader, hparams):
-        super().__init__()
-        self.hparams = hparams
-        self.encoder = LSTMEncoder(diminfo, n_hidden)
-        self.global_discriminator = GlobalDiscriminator(diminfo, n_hidden)
-        self.local_discriminator = LocalDiscriminator(diminfo, n_hidden)
-        self.prior_descriminator = PriorDiscriminator(n_hidden)
-        self.criterion = nn.BCEWithLogitsLoss()
-        self.encoding = None
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-
-    def forward(self, x):
-        return self.encoder(x)
-
-    def logits_loss(self, logits, label):
-        target = torch.full(logits.size(), label, device=logits.device)
-        return self.criterion(logits, target)
-    
-    def prior_loss_function(self, encoding):
-        logits_encoding = self.prior_descriminator(encoding)
-        prior = torch.rand_like(encoding)
-        logits_prior = self.prior_descriminator(prior)
-        return self.logits_loss(logits_encoding, 0) + self.logits_loss(logits_prior, 1)
-
-    def main_loss_function(self, encoding, batch, alpha=1.0, beta=1.0, gamma=0.1):
-        cat, cont = batch
-        cat_fake = torch.cat((cat[1:], cat[0].unsqueeze(0)), dim=0)
-        cont_fake = torch.cat((cont[1:], cont[0].unsqueeze(0)), dim=0)
-        batch_fake = (cat_fake, cont_fake)
-        # global loss
-        Ej = - F.softplus(self.global_discriminator(encoding, batch) * (-1)).mean()
-        Em = F.softplus(self.global_discriminator(encoding, batch_fake)).mean()
-        global_loss = alpha * (Em - Ej)
-        # local loss
-        Ej = - F.softplus(self.local_discriminator(encoding, batch) * (-1)).mean()
-        Em = F.softplus(self.local_discriminator(encoding, batch_fake)).mean()
-        local_loss = beta * (Em - Ej)
-        # encoder loss
-        logits_encoding = self.prior_descriminator(encoding)
-        encoder_loss = gamma * self.logits_loss(logits_encoding, 1)
-        return global_loss + local_loss + encoder_loss
-
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        # train prior discriminator
-        if optimizer_idx == 0:
-            self.encoding = self.encoder(batch)
-            loss = self.prior_loss_function(self.encoding.detach())
-            return {
-                'loss': loss,
-                'log': {'train_loss_prior': loss}
-            }
-        # train encoder
-        if optimizer_idx == 1:
-            loss = self.main_loss_function(self.encoding, batch)
-            return {
-                'loss': loss,
-                'log': {'train_loss_main': loss}
-            }
-    
-    def validation_step(self, batch, batch_idx):
-        encoding = self.encoder(batch)
-        main_loss = self.main_loss_function(encoding, batch).item()
-        prior_loss = self.prior_loss_function(encoding).item()
-        return {
-            'main_loss': main_loss,
-            'prior_loss': prior_loss
-        }
-
-    def validation_end(self, outputs):
-        main_loss = sum([output['main_loss'] for output in outputs]) / len(outputs)
-        prior_loss = sum([output['prior_loss'] for output in outputs]) / len(outputs)
-        return {
-            'log': {
-                'val_loss_main': main_loss,
-                'val_loss_prior': prior_loss
-            }
-        }
-
-    def configure_optimizers(self):
-        prior_optimizer = torch.optim.Adam(self.prior_descriminator.parameters(), lr=self.hparams.lr)
-        main_module = nn.ModuleList([self.encoder, self.global_discriminator, self.local_discriminator])
-        main_optimizer = torch.optim.Adam(main_module.parameters(), lr=self.hparams.lr)
-        return [prior_optimizer, main_optimizer], []
-
-    @pl.data_loader
-    def train_dataloader(self):
-        return self.train_loader
-
-    @pl.data_loader
-    def val_dataloader(self):
-        return self.val_loader
+from plutil import load_model, DIMLSTMModule
 
 
 class SequenceDataset(torch.utils.data.Dataset):
@@ -179,7 +81,7 @@ def main():
             num_workers=6,
             worker_init_fn=worker_init_fn
         )
-        model = DIMLSTM(diminfo, args.n_hidden, train_loader, test_loader, args)
+        model = DIMLSTMModule(diminfo, args.n_hidden, train_loader, test_loader, args)
         logdir = '../logs/21_dimlstm'
         path = pathlib.Path(logdir) / name
         if not path.exists():

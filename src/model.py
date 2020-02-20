@@ -493,3 +493,70 @@ class VAELSTM(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decode(x, z), mu, logvar
 
+
+# for Fine-Tuning
+class PretrainedR2N(nn.Module):
+    def __init__(self, dims, n_hidden, n_main, encoders):
+        super().__init__()
+        app_cat_dims, app_emb_dims, app_cont_dim = dims['application_train']
+        self.onehot = app_cat_dims is None
+        if self.onehot:
+            app_n_input = app_cont_dim
+        else:
+            app_n_input = app_emb_dims.sum() + app_cont_dim
+            self.app_emb_layers = nn.ModuleList([
+                nn.Embedding(x, y) for x, y in zip(app_cat_dims, app_emb_dims)
+            ])
+        self.app_layer = nn.Sequential(
+            nn.Linear(app_n_input, n_hidden),
+            nn.ReLU(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+        )
+        self.bureau_layer = encoders['bureau']
+        self.bb_layer = encoders['bureau_balance']
+        self.prev_layer = encoders['previous_application']
+        self.cash_layer = encoders['POS_CASH_balance']
+        self.inst_layer = encoders['installments_payments']
+        self.credit_layer = encoders['credit_card_balance']
+        self.main = nn.Sequential(
+            nn.Linear(n_hidden * 7, n_main),
+            nn.BatchNorm1d(n_main),
+            nn.Dropout(),
+            nn.ReLU(),
+            nn.Linear(n_main, 1),
+        )
+
+    def forward(self, x):
+        if self.onehot:
+            app, bureau, bb = x[0], x[1], x[2]
+            prev, cash, inst, credit = x[3], x[4], x[5], x[6]
+            # application
+            app = self.app_layer(app)
+            # sequences
+            bureau = self.bureau_layer(bureau)
+            bb = self.bb_layer(bb)
+            prev = self.prev_layer(prev)
+            cash = self.cash_layer(cash)
+            inst = self.inst_layer(inst)
+            credit = self.credit_layer(credit)
+        else:
+            app_cat, app_cont = x[0], x[1]
+            bureau_cat, bureau_cont, bb_cat, bb_cont = x[2], x[3], x[4], x[5]
+            prev_cat, prev_cont, cash_cat, cash_cont = x[6], x[7], x[8], x[9]
+            inst_cat, inst_cont, credit_cat, credit_cont = x[10], x[11], x[12], x[13]
+            # application
+            app_cat = [emb_layer(app_cat[:, i]) for i, emb_layer in enumerate(self.app_emb_layers)]
+            app_cat = torch.cat(app_cat, dim=1)
+            app = torch.cat([app_cat, app_cont], dim=1)
+            app = self.app_layer(app)
+            # sequences
+            bureau = self.bureau_layer((bureau_cat, bureau_cont))
+            bb = self.bb_layer((bb_cat, bb_cont))
+            prev = self.prev_layer((prev_cat, prev_cont))
+            cash = self.cash_layer((cash_cat, cash_cont))
+            inst = self.inst_layer((inst_cat, inst_cont))
+            credit = self.credit_layer((credit_cat, credit_cont))
+        # main
+        x = torch.cat([app, bureau, bb, prev, cash, inst, credit], dim=1)
+        return self.main(x)

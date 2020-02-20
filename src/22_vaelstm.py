@@ -5,67 +5,12 @@ import joblib
 from tqdm import tqdm
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import pytorch_lightning as pl
 from pytorch_lightning.logging import TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from util import seed_everything, worker_init_fn, dump, read_all
-from model import VAELSTM
-from plutil import load_model
-
-
-class VAELSTMModule(pl.LightningModule):
-    def __init__(self, diminfo, n_hidden, train_loader, val_loader, hparams):
-        super().__init__()
-        self.hparams = hparams
-        self.model = VAELSTM(diminfo, n_hidden)
-        self.criterion = nn.MSELoss(reduction='sum')
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-
-    def loss_function(self, recon_x, x, mu, logvar):
-        NLL = self.criterion(recon_x, x)
-        KLD = - 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        return NLL + KLD
-
-    def forward(self, x):
-        return self.model.encoder(x)
-
-    def training_step(self, batch, batch_idx):
-        recon_batch, mu, logvar = self.model(batch)
-        loss = self.loss_function(recon_batch, batch, mu, logvar)
-        return {
-            'loss': loss,
-            'log': {'train_loss': loss}
-        }
-    
-    def validation_step(self, batch, batch_idx):
-        recon_batch, mu, logvar = self.model(batch)
-        loss = self.loss_function(recon_batch, batch, mu, logvar)
-        return {
-            'loss': loss
-        }
-
-    def validation_end(self, outputs):
-        loss = sum([output['loss'] for output in outputs]) / len(outputs)
-        return {
-            'log': {
-                'val_loss': loss
-            }
-        }
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
-
-    @pl.data_loader
-    def train_dataloader(self):
-        return self.train_loader
-
-    @pl.data_loader
-    def val_dataloader(self):
-        return self.val_loader
+from plutil import load_model, VAELSTMModule
 
 
 class OneHotSequenceDataset(torch.utils.data.Dataset):
