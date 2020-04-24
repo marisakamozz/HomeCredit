@@ -107,7 +107,7 @@ def load_model(model, name, version=None, logdir='../logs'):
                 new_version = int(subdir.name[8:])
                 if new_version > version:
                     version = new_version
-    filepath = pathlib.Path(logdir) / name / f'version_{version}' / 'checkpoints'
+    filepath = pathlib.Path(logdir) / name / f'version_{version}'  # / 'checkpoints'
     filename = next(iter(filepath.glob('*.ckpt')))
     checkpoint = torch.load(filename)
     model.load_state_dict(checkpoint['state_dict'])

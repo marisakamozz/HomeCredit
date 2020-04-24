@@ -1,3 +1,10 @@
+"""
+VAE(LSTM)
+
+VAE (LSTM)を用いて履歴テーブルから教師なし表現学習で履歴特徴量を抽出する。
+訓練データ全体を使って学習し、テストデータを使ってearly stoppingを行う。
+"""
+
 import argparse
 import pathlib
 import math

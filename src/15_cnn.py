@@ -1,3 +1,9 @@
+"""
+CNN
+
+R2N(CNN)を用いて教師あり学習で履歴テーブルから特徴量を抽出し、end to endで予測を行う。
+"""
+
 import argparse
 import torch.nn as nn
 from sklearn.model_selection import StratifiedKFold
